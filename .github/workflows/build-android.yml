@@ -82,11 +82,30 @@ jobs:
           BUILD_TYPE="${{ github.event.inputs.build_type || 'debug' }}"
           bash ci/build-android.sh "$BUILD_TYPE"
 
-      - name: Dump p4a log on failure
-        if: failure()
+      # Always upload logs, pass or fail - buildozer's own error tail is
+      # useless, and the real failure is usually deep in the p4a output.
+      - name: Collect build logs
+        if: always()
         run: |
-          find sbapp/.buildozer -name "*.log" -newermt '-30 minutes' \
-            -exec sh -c 'echo "===== {} ====="; tail -120 "{}"' \; || true
+          mkdir -p build-logs
+          find sbapp/.buildozer -name "*.log" -newermt '-60 minutes' \
+            -exec cp --parents {} build-logs/ \; 2>/dev/null || true
+          # p4a writes recipe build output here
+          for d in sbapp/.buildozer/android/platform/build-*/build/other_builds; do
+            [ -d "$d" ] && find "$d" -name "config.log" -exec cp --parents {} build-logs/ \; 2>/dev/null || true
+          done
+          du -sh build-logs || true
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            build-logs/**
+            sbapp/.buildozer/**/*.log
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: Locate artifact
         id: apk

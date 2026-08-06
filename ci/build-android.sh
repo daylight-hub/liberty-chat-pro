@@ -59,6 +59,36 @@ vendor() {
   rm -rf "$tmp"
 }
 
+LOGDIR="$SBAPP/../build-logs"
+mkdir -p "$LOGDIR"
+
+# buildozer's own tail is famously unhelpful ("the error might be hidden in the
+# log above"). This pulls the actual failure out of the captured output.
+show_real_error() {
+  local log="$1"
+  echo ""
+  echo "################ EXTRACTED ERROR CONTEXT ################"
+  # Compiler / recipe / python failures, with surrounding lines
+  grep -n -E "error:|Error:|ERROR|fatal error|Traceback|Exception|No such file|not found|undefined reference|command failed|Aborted" "$log" \
+    | grep -v -E "The error might be hidden|might be hidden in the log" \
+    | tail -40 || true
+  echo ""
+  echo "################ LAST 150 LINES ################"
+  tail -150 "$log"
+  echo "########################################################"
+}
+
+run_buildozer() {
+  local phase="$1"; shift
+  local log="$LOGDIR/buildozer-${phase}.log"
+  echo "==> buildozer $BUILD_TYPE  [phase: $phase]  -> $log"
+  set +e
+  buildozer -v android "$BUILD_TYPE" 2>&1 | tee "$log"
+  local rc=${PIPESTATUS[0]}
+  set -e
+  return $rc
+}
+
 # --------------------------------------------------------------- 2. prebake
 # The first pass generates the dist tree that stage 3 patches. It is expected
 # to be slow, and upstream tolerates it failing - the tree is what matters.
@@ -68,7 +98,15 @@ prebake() {
     return 0
   fi
   echo "==> prebake pass (generating dist tree)"
-  buildozer android "$BUILD_TYPE" || echo "    prebake returned non-zero (expected)"
+  if ! run_buildozer prebake; then
+    echo "    prebake returned non-zero"
+    if [ ! -d "$DIST_DIR" ]; then
+      echo "    and produced no dist tree - this is a hard failure"
+      show_real_error "$LOGDIR/buildozer-prebake.log"
+      exit 1
+    fi
+    echo "    but dist tree exists, continuing"
+  fi
 }
 
 # ----------------------------------------------------------------- 3. patch
@@ -130,7 +168,10 @@ patch_dist() {
 # ----------------------------------------------------------------- 4. build
 final_build() {
   echo "==> final build ($BUILD_TYPE)"
-  buildozer android "$BUILD_TYPE"
+  if ! run_buildozer final; then
+    show_real_error "$LOGDIR/buildozer-final.log"
+    exit 1
+  fi
 }
 
 vendor
