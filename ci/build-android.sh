@@ -30,6 +30,34 @@ DIST_DIR=".buildozer/android/platform/build-${ARCH}/dists/${DIST_NAME}"
 BUILD_DIR=".buildozer/android/platform/build-${ARCH}/build"
 P4A_DIR=".buildozer/android/platform/python-for-android"
 
+# ----------------------------------------------------------- 0. host tools
+# codec2's CMakeLists invokes `generate_codebook` as a bare command name, so it
+# must be on PATH built for the HOST arch. Mark's fork never builds it as a
+# target - it assumes a system codec2 install provides it. On a clean runner it
+# does not exist, so every codebook rule fails with exit 127 and libcodec2
+# never links. Build it natively from the exact commit the recipe pins.
+CODEC2_COMMIT="00e01c9d72d3b1607e165c71c4c9c942d277dfac"
+HOSTTOOLS="$SBAPP/../.hosttools"
+
+host_tools() {
+  if [ -x "$HOSTTOOLS/generate_codebook" ]; then
+    echo "==> host generate_codebook already built"
+  else
+    echo "==> building host generate_codebook (codec2 @ ${CODEC2_COMMIT:0:8})"
+    mkdir -p "$HOSTTOOLS"
+    local tmp; tmp=$(mktemp -d)
+    curl -sL "https://github.com/markqvist/codec2/archive/${CODEC2_COMMIT}.tar.gz" \
+      -o "$tmp/codec2.tar.gz"
+    tar xzf "$tmp/codec2.tar.gz" -C "$tmp"
+    cc -O2 -o "$HOSTTOOLS/generate_codebook" \
+      "$tmp"/codec2-*/src/generate_codebook.c -lm
+    rm -rf "$tmp"
+  fi
+  export PATH="$HOSTTOOLS:$PATH"
+  command -v generate_codebook >/dev/null || { echo "FATAL: generate_codebook not on PATH"; exit 1; }
+  echo "    generate_codebook: $(command -v generate_codebook)"
+}
+
 # ---------------------------------------------------------------- 1. vendor
 # Upstream copies these from sibling git checkouts. We take them from the
 # versions setup.py requires, so the vendored source matches what the app
@@ -174,6 +202,7 @@ final_build() {
   fi
 }
 
+host_tools
 vendor
 prebake
 patch_dist
