@@ -20,6 +20,14 @@ android.gradle_dependencies =  com.android.support:support-compat:28.0.0
 
 p4a.local_recipes = ../recipes/
 
+# Pin python-for-android to the tagged 2026.05.09 release. buildozer otherwise
+# clones p4a's moving develop branch, where an inconsistency between recipe.py
+# and Python3Recipe caused: 'Python3Recipe' object has no attribute
+# 'get_python_root' during the numpy (meson) build. The tagged release has both
+# halves in sync.
+p4a.fork = kivy
+p4a.branch = v2026.05.09
+
 icon.filename = %(source.dir)s/assets/icon.png
 presplash.filename = %(source.dir)s/assets/presplash_small.png
 android.presplash_color = #071626

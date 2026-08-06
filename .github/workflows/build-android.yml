@@ -46,17 +46,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.buildozer
-          key: buildozer-global-${{ hashFiles('sbapp/buildozer.spec') }}
-          restore-keys: buildozer-global-
+          key: buildozer-global-v2-${{ hashFiles('sbapp/buildozer.spec') }}
+          restore-keys: buildozer-global-v2-
 
       - name: Cache buildozer build directory
         uses: actions/cache@v4
         with:
           path: sbapp/.buildozer
-          key: buildozer-local-${{ hashFiles('sbapp/buildozer.spec') }}-${{ github.sha }}
+          key: buildozer-local-v2-${{ hashFiles('sbapp/buildozer.spec') }}-${{ github.sha }}
           restore-keys: |
-            buildozer-local-${{ hashFiles('sbapp/buildozer.spec') }}-
-            buildozer-local-
+            buildozer-local-v2-${{ hashFiles('sbapp/buildozer.spec') }}-
+            buildozer-local-v2-
 
       - name: Install system dependencies
         run: |
@@ -76,6 +76,12 @@ jobs:
           mkdir -p ~/.android
           touch ~/.android/repositories.cfg
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
+
+      - name: Ensure pinned p4a is used
+        run: |
+          # If a cached clone from the old (unpinned) config exists, drop it so
+          # buildozer re-clones at the pinned tag.
+          rm -rf sbapp/.buildozer/android/platform/python-for-android || true
 
       - name: Build APK
         run: |
