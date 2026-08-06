@@ -87,15 +87,26 @@ jobs:
 
       # Signing only runs when the secrets exist, so forks and PRs still build.
       - name: Sign release APK
-        if: ${{ github.event.inputs.build_type == 'release' && env.KEYSTORE_B64 != '' }}
+        if: ${{ github.event.inputs.build_type == 'release' && secrets.KEYSTORE_B64 != '' }}
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
+          set -e
           echo "$KEYSTORE_B64" | base64 -d > /tmp/release.keystore
-          BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
+
+          # buildozer installs its own SDK; ANDROID_HOME may be unset or point elsewhere.
+          SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
+          [ -d "$SDK_ROOT/build-tools" ] || SDK_ROOT="$ANDROID_HOME"
+          BUILD_TOOLS=$(ls -d "$SDK_ROOT"/build-tools/* 2>/dev/null | sort -V | tail -1)
+          if [ -z "$BUILD_TOOLS" ]; then
+            echo "Could not locate Android build-tools; searched $SDK_ROOT"
+            exit 1
+          fi
+          echo "Using build-tools: $BUILD_TOOLS"
+
           "$BUILD_TOOLS/apksigner" sign \
             --ks /tmp/release.keystore \
             --ks-pass "pass:$KEYSTORE_PASSWORD" \
@@ -103,6 +114,8 @@ jobs:
             --key-pass "pass:$KEY_PASSWORD" \
             --out "sbapp/bin/LibertyChatPro-signed.apk" \
             "${{ steps.apk.outputs.path }}"
+
+          "$BUILD_TOOLS/apksigner" verify --print-certs "sbapp/bin/LibertyChatPro-signed.apk"
           rm -f /tmp/release.keystore
 
       - uses: actions/upload-artifact@v4
