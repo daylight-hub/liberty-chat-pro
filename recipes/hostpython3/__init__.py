@@ -105,8 +105,65 @@ class HostPython3Recipe(Recipe):
         return join(self.site_root, self.site_dir, "bin")
 
     @property
+    def local_dir(self):
+        return join(self.site_root, "usr/local/")
+
+    @property
     def local_bin(self):
         return join(self.site_root, "usr/local/bin/")
+
+    @property
+    def _pip(self):
+        # Expected location, given ensurepip --root and hostpython's
+        # /usr/local prefix.
+        expected = join(self.local_bin, "pip3")
+        if os.path.isfile(expected):
+            return expected
+
+        # Fall back to locating it anywhere under site_root, so a prefix change
+        # in a future CPython does not silently break the meson recipes.
+        import glob as _glob
+        for pattern in ("pip3", "pip3.*", "pip"):
+            found = _glob.glob(join(self.site_root, "**", pattern), recursive=True)
+            found = [f for f in found if os.path.isfile(f) and os.access(f, os.X_OK)]
+            if found:
+                return found[0]
+
+        # Last resort: run pip as a module through the host interpreter.
+        return expected
+
+    @property
+    def pip(self):
+        # Newer p4a calls install_hostpython_prerequisites() -> self._host_recipe.pip
+        # when building meson-based recipes (numpy 2.x). This local 3.11 host
+        # recipe predates that API, so provide it here.
+        return sh.Command(self._pip)
+
+    def fix_pip_shebangs(self):
+        # ensurepip writes shebangs pointing at the interpreter used to run it,
+        # which may not be the final hostpython path. Rewrite them so the pip
+        # scripts remain executable after the build moves things around.
+        if not os.path.exists(self.local_bin):
+            return
+
+        for filename in os.listdir(self.local_bin):
+            if not filename.startswith("pip"):
+                continue
+
+            pip_path = os.path.join(self.local_bin, filename)
+            if not os.path.isfile(pip_path):
+                continue
+
+            with open(pip_path, "rb") as file:
+                file_lines = file.read().splitlines()
+
+            if not file_lines:
+                continue
+
+            file_lines[0] = f"#!{self.python_exe}".encode()
+
+            with open(pip_path, "wb") as file:
+                file.write(b"\n".join(file_lines) + b"\n")
 
     @property
     def site_dir(self):
@@ -170,6 +227,7 @@ class HostPython3Recipe(Recipe):
                 _env={"HOME": "/tmp"}
             )
             print("RAN ENSUREPIP")
+            self.fix_pip_shebangs()
 
 
 recipe = HostPython3Recipe()
