@@ -62,9 +62,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            git zip unzip autoconf libtool pkg-config \
+            git zip unzip autoconf automake libtool libtool-bin libltdl-dev pkg-config \
             zlib1g-dev libncurses-dev libtinfo6 cmake libffi-dev libssl-dev \
-            patchelf automake m4 ccache
+            patchelf m4 ccache
 
       - name: Install buildozer
         run: |
