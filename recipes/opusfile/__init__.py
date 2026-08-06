@@ -2,13 +2,12 @@ from pythonforandroid.recipe import Recipe
 from pythonforandroid.toolchain import current_directory, shprint
 import sh
 import os
-import time
 
 
 class OpusFileRecipe(Recipe):
     version = "0.12"
     url = "https://downloads.xiph.org/releases/opus/opusfile-{version}.tar.gz"
-    depends = ['libogg']
+    depends = ['libogg', 'libopus']
     built_libraries = {'libopusfile.so': '.libs'}
 
     def build_arch(self, arch):
@@ -22,19 +21,28 @@ class OpusFileRecipe(Recipe):
                 "--disable-largefile",
             ]
 
-            cwd = os.getcwd()
-            ogg_include_path = cwd.replace("opusfile", "libogg")
-            env["CPPFLAGS"] += f" -I{ogg_include_path}/include"
+            # opusfile's configure locates ogg and opus via pkg-config, but the
+            # cross-compiled .pc files are not on PKG_CONFIG_PATH, so the lookup
+            # fails ("Package 'ogg'/'opus' not found"). configure itself notes
+            # that DEPS_CFLAGS / DEPS_LIBS can be set to bypass pkg-config, which
+            # is what we do here, pointing at both dependency build trees.
+            ogg_dir = self.get_recipe('libogg', self.ctx).get_build_dir(arch.arch)
+            opus_dir = self.get_recipe('libopus', self.ctx).get_build_dir(arch.arch)
 
-            # libogg_recipe = Recipe.get_recipe('libogg', self.ctx)
-            # env['CFLAGS'] += libogg_recipe.include_flags(arch)
+            # opus installs its public headers under include/opus/, but
+            # opusfile includes them unprefixed (e.g. <opus_multistream.h>), so
+            # expose both the base and the opus/ subdir. ogg headers are also
+            # generated into the build tree, so include that copy as well.
+            deps_cflags = (f"-I{ogg_dir}/include "
+                           f"-I{opus_dir}/include -I{opus_dir}/include/opus")
+            deps_libs = (f"-L{ogg_dir}/src/.libs -logg "
+                         f"-L{opus_dir}/.libs -lopus")
 
-            # openssl_recipe = Recipe.get_recipe('openssl', self.ctx)
-            # env['CFLAGS'] += openssl_recipe.include_flags(arch)
-            # env['LDFLAGS'] += openssl_recipe.link_dirs_flags(arch)
-            # env['LIBS'] = openssl_recipe.link_libs_flags()
-            
-            # (removed upstream debug: rich.pretty.pprint(env) + time.sleep(5))
+            env["DEPS_CFLAGS"] = deps_cflags
+            env["DEPS_LIBS"] = deps_libs
+            # Keep the include path on CPPFLAGS too, for the compile stage.
+            env["CPPFLAGS"] = env.get("CPPFLAGS", "") + " " + deps_cflags
+
             configure = sh.Command('./configure')
             shprint(configure, *flags, _env=env)
             shprint(sh.make, _env=env)
