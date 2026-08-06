@@ -34,10 +34,7 @@ class OpusFileRecipe(Recipe):
             # env['LDFLAGS'] += openssl_recipe.link_dirs_flags(arch)
             # env['LIBS'] = openssl_recipe.link_libs_flags()
             
-            from rich.pretty import pprint
-            pprint(env)
-            time.sleep(5)
-
+            # (removed upstream debug: rich.pretty.pprint(env) + time.sleep(5))
             configure = sh.Command('./configure')
             shprint(configure, *flags, _env=env)
             shprint(sh.make, _env=env)
