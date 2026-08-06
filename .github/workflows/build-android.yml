@@ -19,6 +19,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
+    # Hoisted to job level: the `secrets` context is not available in a step's
+    # `if`, but `env` is - and job-level env is resolved before steps evaluate.
+    env:
+      KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -87,12 +95,7 @@ jobs:
 
       # Signing only runs when the secrets exist, so forks and PRs still build.
       - name: Sign release APK
-        if: ${{ github.event.inputs.build_type == 'release' && secrets.KEYSTORE_B64 != '' }}
-        env:
-          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        if: ${{ github.event.inputs.build_type == 'release' && env.KEYSTORE_B64 != '' }}
         run: |
           set -e
           echo "$KEYSTORE_B64" | base64 -d > /tmp/release.keystore
