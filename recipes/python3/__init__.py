@@ -190,6 +190,16 @@ class Python3Recipe(TargetPythonRecipe):
     def link_root(self, arch_name):
         return join(self.get_build_dir(arch_name), 'android-build')
 
+    def get_python_root(self, arch):
+        # Newer p4a (meson recipes such as numpy 2.x) introspect the target
+        # Python through this prefix, expecting an installed layout containing
+        # lib/pythonX.Y/_sysconfigdata*.py. This local 3.11 recipe now installs
+        # into android-build/android-root (see build_arch) to satisfy that.
+        return join(self.get_build_dir(arch.arch), 'android-build', 'android-root')
+
+    def get_android_python_exe(self, arch):
+        return join(self.get_python_root(arch), 'bin', self.name)
+
     def should_build(self, arch):
         return not Path(self.link_root(arch.arch), self._libpython).is_file()
 
@@ -311,9 +321,13 @@ class Python3Recipe(TargetPythonRecipe):
         build_dir = join(recipe_build_dir, 'android-build')
         ensure_dir(build_dir)
 
-        # TODO: Get these dynamically, like bpo-30386 does
-        sys_prefix = '/usr/local'
-        sys_exec_prefix = '/usr/local'
+        # Install into android-build/android-root so that get_python_root()
+        # points at a populated prefix (needed by meson-based recipes like
+        # numpy 2.x). Previously this used /usr/local with no make install,
+        # which the newer p4a introspection path cannot consume.
+        sys_prefix = join(build_dir, 'android-root')
+        sys_exec_prefix = sys_prefix
+        ensure_dir(sys_prefix)
 
         env = self.get_recipe_env(arch)
         env = self.set_libs_flags(env, arch)
@@ -345,6 +359,10 @@ class Python3Recipe(TargetPythonRecipe):
                 'INSTSONAME={lib_name}'.format(lib_name=self._libpython),
                 _env=env
             )
+
+            # Install into android-root so the meson introspection path can find
+            # _sysconfigdata and the target headers/libs under a real prefix.
+            shprint(sh.make, 'install', _env=env)
 
             # TODO: Look into passing the path to pyconfig.h in a
             # better way, although this is probably acceptable
