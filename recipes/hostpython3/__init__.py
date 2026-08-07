@@ -221,27 +221,11 @@ class HostPython3Recipe(Recipe):
         ensure_dir(self.site_root)
         self.ctx.hostpython = self.python_exe
         if build_configured:
-            # The hostpython was compiled with the default --prefix=/usr/local,
-            # so its sys.path includes /usr/local/lib/python3.11/site-packages.
-            # pip MUST land there, or `python3 -m pip` cannot find it.
-            # p4a's get_hostrecipe_env() also clears PYTHONPATH='', so putting
-            # pip anywhere else and relying on PYTHONPATH does not work.
-            sys_site = "/usr/local/lib/python3.11/site-packages"
-            ensure_dir(sys_site)
-
-            print("RUNNING ENSUREPIP -> " + sys_site)
-            ep_env = {
-                "HOME": "/tmp",
-                "PATH": os.environ.get("PATH", ""),
-            }
-            shprint(
-                sh.Command(self.python_exe), "-m", "ensurepip",
-                "--root", "/",  # install into the prefix, not user-site
-                "-U",
-                _env=ep_env
-            )
-            print("RAN ENSUREPIP")
-            self.fix_pip_shebangs()
+            # pip installation is handled by the build script's bootstrap_pip()
+            # function which runs after prebake, using the hostpython binary
+            # directly. This avoids permission errors (/usr/local is root-owned)
+            # and p4a's should_build() skipping logic.
+            pass
 
 
 recipe = HostPython3Recipe()

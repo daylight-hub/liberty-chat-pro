@@ -234,10 +234,11 @@ host_tools
 vendor
 prebake
 # -------------------------------------------------------- 3b. pip bootstrap
-# The hostpython3 recipe's ensurepip code is skipped when should_build()
-# returns False (i.e. when the binary already exists from a cached/prebake
-# run). Rather than fight p4a's recipe cache, install pip directly here,
-# after prebake has guaranteed the hostpython binary is on disk.
+# The hostpython binary is built with --prefix=<build_dir>/native-build
+# (Mark's recipe sets sys_prefix = build_dir/android-root, but the actual
+# hostpython prefix is the native-build directory itself). We can't rely on
+# the recipe's should_build() ever running our ensurepip code, so we do it
+# here directly in the build script after prebake.
 bootstrap_pip() {
   local HP_BIN
   HP_BIN=$(find "$SBAPP/.buildozer/android/platform/build-arm64-v8a/build/other_builds/hostpython3"     -name "python3" -type f 2>/dev/null | head -1)
@@ -246,49 +247,55 @@ bootstrap_pip() {
     echo "==> WARNING: hostpython3 binary not found, skipping pip bootstrap"
     return 0
   fi
-
   echo "==> hostpython binary: $HP_BIN"
 
   # Check if pip is already importable.
   if "$HP_BIN" -c "import pip" 2>/dev/null; then
-    echo "==> pip already importable, skipping bootstrap"
+    echo "==> pip already importable in hostpython"
     return 0
   fi
 
   echo "==> bootstrapping pip into hostpython"
 
-  # ensurepip --root / installs pip into the hostpython's compiled prefix.
-  # We need to figure out what that prefix is by asking the binary.
-  local HP_PREFIX
-  HP_PREFIX=$("$HP_BIN" -c "import sys; print(sys.prefix)" 2>/dev/null || echo "/usr/local")
-  echo "==> hostpython sys.prefix: $HP_PREFIX"
+  # Ask the binary where it looks for site-packages.
+  local HP_SITE
+  HP_SITE=$("$HP_BIN" -c "
+import site, sys
+sp = site.getsitepackages()
+print(sp[0] if sp else (sys.prefix + '/lib/python3.11/site-packages'))
+" 2>/dev/null)
 
-  local HP_SITE="$HP_PREFIX/lib/python3.11/site-packages"
+  if [ -z "$HP_SITE" ]; then
+    # Fallback: derive from binary location (native-build/bin/python3 -> native-build/lib/...)
+    local HP_NATBUILD; HP_NATBUILD=$(dirname "$(dirname "$HP_BIN")")
+    HP_SITE="$HP_NATBUILD/lib/python3.11/site-packages"
+  fi
+  echo "==> target site-packages: $HP_SITE"
   mkdir -p "$HP_SITE"
 
-  # First try ensurepip --root to install into the actual prefix.
-  "$HP_BIN" -m ensurepip --root / -U 2>&1 || true
+  # Download pip/setuptools wheels using the runner's system Python, then
+  # install them with --target into the hostpython's site-packages.
+  # This works regardless of /usr/local ownership since we write to the
+  # build tree, not the system prefix.
+  local TMP; TMP=$(mktemp -d)
+  echo "==> downloading pip + setuptools wheels"
+  python3 -m pip download pip setuptools --no-deps -d "$TMP" -q 2>&1 | tail -3
 
-  # Verify pip is now importable.
-  if "$HP_BIN" -c "import pip" 2>/dev/null; then
-    echo "==> pip bootstrap succeeded via ensurepip --root /"
-    return 0
-  fi
+  echo "==> installing into $HP_SITE"
+  for whl in "$TMP"/*.whl; do
+    python3 -m pip install --target "$HP_SITE" --no-deps "$whl" -q
+  done
+  rm -rf "$TMP"
 
-  echo "==> ensurepip --root / failed, trying pip install --target"
-  # Download pip wheel and install it directly to the prefix site-packages.
-  local TMP_WHEEL; TMP_WHEEL=$(mktemp -d)
-  python3 -m pip download pip setuptools --no-deps -d "$TMP_WHEEL" -q
-  python3 -m pip install --target "$HP_SITE" --no-deps "$TMP_WHEEL"/*.whl
-  rm -rf "$TMP_WHEEL"
-
-  if "$HP_BIN" -c "import pip" 2>/dev/null; then
-    echo "==> pip bootstrap succeeded via --target install"
+  # Verify
+  if "$HP_BIN" -c "import pip; print('pip', pip.__version__)" 2>/dev/null; then
+    echo "==> pip bootstrap succeeded"
   else
-    echo "==> WARNING: could not bootstrap pip into hostpython"
+    echo "==> FATAL: pip still not importable after bootstrap"
     echo "    HP_BIN=$HP_BIN"
     echo "    HP_SITE=$HP_SITE"
     "$HP_BIN" -c "import sys; print('sys.path:', sys.path)"
+    exit 1
   fi
 }
 
