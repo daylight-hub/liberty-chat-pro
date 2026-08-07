@@ -77,11 +77,18 @@ jobs:
           touch ~/.android/repositories.cfg
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
 
-      - name: Ensure pinned p4a is used
+      - name: Clean stale recipe builds
         run: |
           # If a cached clone from the old (unpinned) config exists, drop it so
           # buildozer re-clones at the pinned tag.
           rm -rf sbapp/.buildozer/android/platform/python-for-android || true
+
+          # Force hostpython3 and python3 to rebuild so ensurepip and
+          # get_python_root changes take effect (p4a skips "already built"
+          # recipes otherwise, even when the recipe source changed).
+          rm -rf sbapp/.buildozer/android/platform/build-arm64-v8a/build/other_builds/hostpython3 || true
+          rm -rf sbapp/.buildozer/android/platform/build-arm64-v8a/build/other_builds/python3* || true
+          rm -rf sbapp/.buildozer/android/platform/build-arm64-v8a/build/other_builds/numpy || true
 
       - name: Build APK
         run: |
