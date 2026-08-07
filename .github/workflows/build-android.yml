@@ -77,18 +77,14 @@ jobs:
           touch ~/.android/repositories.cfg
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
 
-      - name: Clean stale recipe builds
+      # p4a clone cleanup stays here (confirmed working - p4a is correctly
+      # pinned to v2026.05.09 in every run). Recipe-build cleanup for
+      # hostpython3/python3/numpy moved into ci/build-android.sh itself,
+      # since a prior version of this step appeared not to take effect and
+      # the in-script version can verify its own result before continuing.
+      - name: Clean p4a clone
         run: |
-          # If a cached clone from the old (unpinned) config exists, drop it so
-          # buildozer re-clones at the pinned tag.
           rm -rf sbapp/.buildozer/android/platform/python-for-android || true
-
-          # Force hostpython3 and python3 to rebuild so ensurepip and
-          # get_python_root changes take effect (p4a skips "already built"
-          # recipes otherwise, even when the recipe source changed).
-          rm -rf sbapp/.buildozer/android/platform/build-arm64-v8a/build/other_builds/hostpython3 || true
-          rm -rf sbapp/.buildozer/android/platform/build-arm64-v8a/build/other_builds/python3* || true
-          rm -rf sbapp/.buildozer/android/platform/build-arm64-v8a/build/other_builds/numpy || true
 
       - name: Build APK
         run: |

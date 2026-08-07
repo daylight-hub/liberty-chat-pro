@@ -202,6 +202,34 @@ final_build() {
   fi
 }
 
+# Force-clean recipes whose build logic changed, with explicit verification.
+# This runs INSIDE the script (not as a separate CI step) so there is no
+# ambiguity about step ordering or working directory relative to the cache
+# restore - it executes immediately before buildozer, in the same shell,
+# against the same paths buildozer itself will use.
+clean_stale_recipes() {
+  echo "==> checking for stale recipe builds to clean"
+  local other_builds=".buildozer/android/platform/build-arm64-v8a/build/other_builds"
+  for name in hostpython3 "python3*" numpy; do
+    for d in $other_builds/$name; do
+      if [ -e "$d" ]; then
+        echo "    removing: $d"
+        rm -rf "$d"
+      else
+        echo "    not present (already clean): $d"
+      fi
+    done
+  done
+  # Verify: prove the directories are actually gone before continuing.
+  if [ -d "$other_builds/hostpython3" ]; then
+    echo "FATAL: $other_builds/hostpython3 still exists after cleanup"
+    ls -la "$other_builds/hostpython3" || true
+    exit 1
+  fi
+  echo "==> stale recipe cleanup verified"
+}
+
+clean_stale_recipes
 host_tools
 vendor
 prebake
