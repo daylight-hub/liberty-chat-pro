@@ -114,33 +114,26 @@ class HostPython3Recipe(Recipe):
 
     @property
     def _pip(self):
-        # With ensurepip running without --root, pip3 lands next to the
-        # hostpython binary in native-build/bin/.
-        native_bin = join(self.get_path_to_python(), "bin", "pip3")
-        if os.path.isfile(native_bin):
-            return native_bin
-
-        # Legacy fallback: --root layout.
-        legacy = join(self.local_bin, "pip3")
-        if os.path.isfile(legacy):
-            return legacy
-
-        # Search as last resort.
-        import glob as _glob
-        for pattern in ("pip3", "pip3.*", "pip"):
-            found = _glob.glob(join(self.site_root, "**", pattern), recursive=True)
-            found = [f for f in found if os.path.isfile(f) and os.access(f, os.X_OK)]
-            if found:
-                return found[0]
-
-        return native_bin
+        # Path to the pip3 script, if needed for shebang fixing.
+        # With -m pip as the primary interface, this is secondary.
+        for candidate in [
+            join(self.get_path_to_python(), "bin", "pip3"),
+            join(self.local_bin, "pip3"),
+        ]:
+            if os.path.isfile(candidate):
+                return candidate
+        return join(self.get_path_to_python(), "bin", "pip3")
 
     @property
     def pip(self):
         # Newer p4a calls install_hostpython_prerequisites() -> self._host_recipe.pip
-        # when building meson-based recipes (numpy 2.x). This local 3.11 host
-        # recipe predates that API, so provide it here.
-        return sh.Command(self._pip)
+        # when building meson-based recipes (numpy 2.x).
+        #
+        # Rather than locating the pip3 script (whose location depends on
+        # whether ensurepip did a system or user install), run pip as a module
+        # through the hostpython binary. This always works regardless of where
+        # pip's package landed, since the hostpython knows its own sys.path.
+        return sh.Command(self.python_exe).bake("-m", "pip")
 
     def fix_pip_shebangs(self):
         # ensurepip writes shebangs pointing at the interpreter used to run it,
