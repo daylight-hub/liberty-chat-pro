@@ -233,7 +233,67 @@ clean_stale_recipes
 host_tools
 vendor
 prebake
+# -------------------------------------------------------- 3b. pip bootstrap
+# The hostpython3 recipe's ensurepip code is skipped when should_build()
+# returns False (i.e. when the binary already exists from a cached/prebake
+# run). Rather than fight p4a's recipe cache, install pip directly here,
+# after prebake has guaranteed the hostpython binary is on disk.
+bootstrap_pip() {
+  local HP_BIN
+  HP_BIN=$(find "$SBAPP/.buildozer/android/platform/build-arm64-v8a/build/other_builds/hostpython3"     -name "python3" -type f 2>/dev/null | head -1)
+
+  if [ -z "$HP_BIN" ]; then
+    echo "==> WARNING: hostpython3 binary not found, skipping pip bootstrap"
+    return 0
+  fi
+
+  echo "==> hostpython binary: $HP_BIN"
+
+  # Check if pip is already importable.
+  if "$HP_BIN" -c "import pip" 2>/dev/null; then
+    echo "==> pip already importable, skipping bootstrap"
+    return 0
+  fi
+
+  echo "==> bootstrapping pip into hostpython"
+
+  # ensurepip --root / installs pip into the hostpython's compiled prefix.
+  # We need to figure out what that prefix is by asking the binary.
+  local HP_PREFIX
+  HP_PREFIX=$("$HP_BIN" -c "import sys; print(sys.prefix)" 2>/dev/null || echo "/usr/local")
+  echo "==> hostpython sys.prefix: $HP_PREFIX"
+
+  local HP_SITE="$HP_PREFIX/lib/python3.11/site-packages"
+  mkdir -p "$HP_SITE"
+
+  # First try ensurepip --root to install into the actual prefix.
+  "$HP_BIN" -m ensurepip --root / -U 2>&1 || true
+
+  # Verify pip is now importable.
+  if "$HP_BIN" -c "import pip" 2>/dev/null; then
+    echo "==> pip bootstrap succeeded via ensurepip --root /"
+    return 0
+  fi
+
+  echo "==> ensurepip --root / failed, trying pip install --target"
+  # Download pip wheel and install it directly to the prefix site-packages.
+  local TMP_WHEEL; TMP_WHEEL=$(mktemp -d)
+  python3 -m pip download pip setuptools --no-deps -d "$TMP_WHEEL" -q
+  python3 -m pip install --target "$HP_SITE" --no-deps "$TMP_WHEEL"/*.whl
+  rm -rf "$TMP_WHEEL"
+
+  if "$HP_BIN" -c "import pip" 2>/dev/null; then
+    echo "==> pip bootstrap succeeded via --target install"
+  else
+    echo "==> WARNING: could not bootstrap pip into hostpython"
+    echo "    HP_BIN=$HP_BIN"
+    echo "    HP_SITE=$HP_SITE"
+    "$HP_BIN" -c "import sys; print('sys.path:', sys.path)"
+  fi
+}
+
 patch_dist
+bootstrap_pip
 final_build
 
 echo "==> artifacts:"
