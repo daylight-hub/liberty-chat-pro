@@ -114,14 +114,18 @@ class HostPython3Recipe(Recipe):
 
     @property
     def _pip(self):
-        # Expected location, given ensurepip --root and hostpython's
-        # /usr/local prefix.
-        expected = join(self.local_bin, "pip3")
-        if os.path.isfile(expected):
-            return expected
+        # With ensurepip running without --root, pip3 lands next to the
+        # hostpython binary in native-build/bin/.
+        native_bin = join(self.get_path_to_python(), "bin", "pip3")
+        if os.path.isfile(native_bin):
+            return native_bin
 
-        # Fall back to locating it anywhere under site_root, so a prefix change
-        # in a future CPython does not silently break the meson recipes.
+        # Legacy fallback: --root layout.
+        legacy = join(self.local_bin, "pip3")
+        if os.path.isfile(legacy):
+            return legacy
+
+        # Search as last resort.
         import glob as _glob
         for pattern in ("pip3", "pip3.*", "pip"):
             found = _glob.glob(join(self.site_root, "**", pattern), recursive=True)
@@ -129,8 +133,7 @@ class HostPython3Recipe(Recipe):
             if found:
                 return found[0]
 
-        # Last resort: run pip as a module through the host interpreter.
-        return expected
+        return native_bin
 
     @property
     def pip(self):
@@ -143,14 +146,22 @@ class HostPython3Recipe(Recipe):
         # ensurepip writes shebangs pointing at the interpreter used to run it,
         # which may not be the final hostpython path. Rewrite them so the pip
         # scripts remain executable after the build moves things around.
-        if not os.path.exists(self.local_bin):
-            return
+        # Check both native-build/bin/ and the legacy --root location.
+        dirs_to_check = [
+            join(self.get_path_to_python(), "bin"),
+            self.local_bin,
+        ]
+        for check_dir in dirs_to_check:
+            if not os.path.exists(check_dir):
+                continue
+            self._fix_shebangs_in(check_dir)
 
-        for filename in os.listdir(self.local_bin):
+    def _fix_shebangs_in(self, directory):
+        for filename in os.listdir(directory):
             if not filename.startswith("pip"):
                 continue
 
-            pip_path = os.path.join(self.local_bin, filename)
+            pip_path = os.path.join(directory, filename)
             if not os.path.isfile(pip_path):
                 continue
 
@@ -221,10 +232,13 @@ class HostPython3Recipe(Recipe):
         ensure_dir(self.site_root)
         self.ctx.hostpython = self.python_exe
         if build_configured:
-            print("RUNNING ENSUREPIP:"+self.site_root)
+            print("RUNNING ENSUREPIP")
+            # Install pip into the hostpython's own site-packages (no --root),
+            # matching the builtin recipe. --root splits the pip script from
+            # its package, causing "No module named pip" when the script runs.
             shprint(
-                sh.Command(self.python_exe), "-m", "ensurepip", "--root", self.site_root, "-U",
-                _env={"HOME": "/tmp"}
+                sh.Command(self.python_exe), "-m", "ensurepip", "-U",
+                _env={"HOME": "/tmp", "PATH": self.local_bin}
             )
             print("RAN ENSUREPIP")
             self.fix_pip_shebangs()
