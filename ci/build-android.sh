@@ -138,6 +138,23 @@ prebake() {
 }
 
 # ----------------------------------------------------------------- 3. patch
+patch_p4a_templates() {
+  # p4a apk copies Java files from its own bootstrap/common/build/ templates
+  # into dists/, overwriting anything we put in patch_dist(). Patch the
+  # p4a templates BEFORE final_build so our version is what p4a copies.
+  local P4A="$SBAPP/.buildozer/android/platform/python-for-android"
+  local COMMON="$P4A/pythonforandroid/bootstraps/common/build/src/main/java/org/kivy/android"
+  local SDL2="$P4A/pythonforandroid/bootstraps/sdl2/build/src/main/java/org/kivy/android"
+
+  for target_dir in "$COMMON" "$SDL2"; do
+    if [ -d "$target_dir" ]; then
+      cp patches/PythonService.java  "$target_dir/PythonService.java"  && echo "    PythonService.java -> $target_dir"
+      [ -f patches/PythonActivity.java ] && cp patches/PythonActivity.java "$target_dir/PythonActivity.java" && echo "    PythonActivity.java -> $target_dir"
+    fi
+  done
+  echo "==> p4a templates patched"
+}
+
 patch_dist() {
   echo "==> patching dist"
   if [ ! -d "$DIST_DIR" ]; then
@@ -196,6 +213,17 @@ patch_dist() {
 # ----------------------------------------------------------------- 4. build
 final_build() {
   echo "==> final build ($BUILD_TYPE)"
+
+  # p4a apk may regenerate dist files before Gradle compiles.
+  # Re-apply the Java patches right before build so the compiled files
+  # are definitely ours, even if p4a re-created the dist.
+  local JAVA_DIR="$SBAPP/.buildozer/android/platform/build-${ARCH}/dists/${DIST_NAME}/src/main/java/org/kivy/android"
+  if [ -d "$JAVA_DIR" ]; then
+    echo "==> re-applying Java patches before Gradle"
+    cp "$SBAPP/patches/PythonService.java"  "$JAVA_DIR/PythonService.java"  && echo "    PythonService.java applied"
+    [ -f "$SBAPP/patches/PythonActivity.java" ] && cp "$SBAPP/patches/PythonActivity.java" "$JAVA_DIR/PythonActivity.java" && echo "    PythonActivity.java applied"
+  fi
+
   if ! run_buildozer final; then
     show_real_error "$LOGDIR/buildozer-final.log"
     exit 1
@@ -301,6 +329,7 @@ print(sp[0] if sp else (sys.prefix + '/lib/python3.11/site-packages'))
 
 patch_dist
 bootstrap_pip
+patch_p4a_templates
 final_build
 
 echo "==> artifacts:"
