@@ -12,43 +12,64 @@ class PyCodec2Recipe(CythonRecipe):
 
     def get_recipe_env(self, arch, with_flags_in_cc=True):
         """
-        Adds codec2 recipe to include and library path.
+        Adds codec2 recipe and numpy include path to the build environment.
         """
+        import os
         env = super().get_recipe_env(arch, with_flags_in_cc)
 
         codec2_recipe = self.get_recipe('codec2', self.ctx)
-        env['CFLAGS'] += codec2_recipe.include_flags(arch) +" -l:libcodec2.so"
+        env['CFLAGS'] += codec2_recipe.include_flags(arch) + " -l:libcodec2.so"
         env['LDFLAGS'] += ' -L{}'.format(self.ctx.get_libs_dir(arch.arch))
         env['LDFLAGS'] += ' -L{}'.format(self.ctx.libs_dir)
         env['LDFLAGS'] += codec2_recipe.link_dirs_flags(arch)
-        
+
+        # Add numpy include path so cython can find numpy.pxd when
+        # cythonizing pycodec2.pyx. numpy is installed via --target into
+        # native-build/lib/python3.11/site-packages/.
+        python_exe = self.ctx.hostpython
+        r = __import__('subprocess').run(
+            [python_exe, "-c", "import sys; print(sys.prefix)"],
+            capture_output=True, text=True
+        )
+        if r.returncode == 0:
+            prefix = r.stdout.strip()
+            np_site = os.path.join(prefix, "lib", "python3.11", "site-packages")
+            # numpy 2.x: _core/include; numpy 1.x/2.0: core/include
+            for sub in ("_core/include", "core/include"):
+                np_inc = os.path.join(np_site, "numpy", sub)
+                if os.path.isdir(np_inc):
+                    env['CFLAGS'] += ' -I' + np_inc
+                    break
+
         return env
 
-    def install_hostpython_prerequisites(self, packages=None, force_upgrade=True):
-        """Also install numpy into the hostpython for setup.py."""
+    def _ensure_numpy_in_hostpython(self):
+        """Install numpy into hostpython site-packages so setup.py can import it."""
         import subprocess, os
         python_exe = self.ctx.hostpython
-
-        # Ensure numpy is importable in the hostpython before setup.py runs.
         r = subprocess.run([python_exe, "-c", "import numpy"], capture_output=True)
-        if r.returncode != 0:
-            # Get the hostpython prefix.
-            r2 = subprocess.run(
-                [python_exe, "-c", "import sys; print(sys.prefix)"],
-                capture_output=True, text=True
-            )
-            prefix = r2.stdout.strip() if r2.returncode == 0 else os.path.dirname(python_exe)
-            hp_site = os.path.join(prefix, "lib", "python3.11", "site-packages")
-            os.makedirs(hp_site, exist_ok=True)
-            print(f"[pycodec2] installing numpy into hostpython -> {hp_site}")
-            subprocess.run(
-                ["python3", "-m", "pip", "install", "--target", hp_site,
-                 "--no-deps", "numpy==2.1.3", "-q"],
-                check=True
-            )
-        super().install_hostpython_prerequisites(packages=packages, force_upgrade=force_upgrade)
+        if r.returncode == 0:
+            return  # already importable
+        r2 = subprocess.run(
+            [python_exe, "-c", "import sys; print(sys.prefix)"],
+            capture_output=True, text=True
+        )
+        prefix = r2.stdout.strip() if r2.returncode == 0 else os.path.dirname(python_exe)
+        hp_site = os.path.join(prefix, "lib", "python3.11", "site-packages")
+        os.makedirs(hp_site, exist_ok=True)
+        print(f"[pycodec2] installing numpy into hostpython -> {hp_site}")
+        subprocess.run(
+            ["python3", "-m", "pip", "install", "--target", hp_site,
+             "--no-deps", "numpy==2.1.3", "-q"],
+            check=True
+        )
+        print("[pycodec2] numpy installed ok")
 
     def build_arch(self, arch):
+        # CythonRecipe.build_arch runs setup.py on the first pass before
+        # cythonizing. setup.py does `import numpy`, so numpy must be in
+        # the hostpython before super().build_arch() is called.
+        self._ensure_numpy_in_hostpython()
         super().build_arch(arch)
         with current_directory(self.get_build_dir(arch.arch)):
             pass
