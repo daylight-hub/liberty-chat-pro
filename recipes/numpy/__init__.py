@@ -8,6 +8,87 @@ NUMPY_NDK_MESSAGE = (
 
 
 class NumpyRecipe(MesonRecipe):
+
+    def install_hostpython_prerequisites(self, packages=None, force_upgrade=True):
+        """Override to bootstrap pip into the hostpython BEFORE using it.
+
+        The local hostpython3 recipe is compiled without pip (it predates
+        p4a's pip-in-hostpython design). Rather than call
+        ``native-build/python3 -m pip`` (which fails: No module named pip),
+        we:
+
+        1. Find the hostpython's site-packages via site.getsitepackages().
+        2. Use the runner's system pip to download wheels and install them
+           into that directory with --target.
+        3. Then call the normal prerequisite install using the now-working pip.
+        """
+        import subprocess
+        import site as _site
+        import os
+
+        python_exe = self.ctx.hostpython
+
+        # ---- 1. ensure pip is importable in the hostpython ----------------
+        result = subprocess.run(
+            [python_exe, "-c", "import pip"],
+            capture_output=True
+        )
+        if result.returncode != 0:
+            # Ask the hostpython where its site-packages are.
+            r = subprocess.run(
+                [python_exe, "-c",
+                 "import site, sys; sp=site.getsitepackages(); "
+                 "print(sp[0] if sp else sys.prefix+'/lib/python3.11/site-packages')"],
+                capture_output=True, text=True
+            )
+            hp_site = r.stdout.strip() if r.returncode == 0 else ""
+            if not hp_site:
+                # Derive from binary path: .../native-build/bin/python3
+                hp_bin_dir = os.path.dirname(python_exe)
+                hp_site = os.path.join(
+                    os.path.dirname(hp_bin_dir), "lib", "python3.11", "site-packages"
+                )
+
+            print(f"[numpy] bootstrapping pip -> {hp_site}")
+            os.makedirs(hp_site, exist_ok=True)
+
+            # Use system pip to download and install pip+setuptools into hp_site
+            tmp = "/tmp/pip_bootstrap_wheels"
+            os.makedirs(tmp, exist_ok=True)
+            subprocess.run(
+                ["python3", "-m", "pip", "download",
+                 "pip", "setuptools", "--no-deps", "-d", tmp, "-q"],
+                check=True
+            )
+            for whl in os.listdir(tmp):
+                if whl.endswith(".whl"):
+                    subprocess.run(
+                        ["python3", "-m", "pip", "install",
+                         "--target", hp_site, "--no-deps",
+                         os.path.join(tmp, whl), "-q"],
+                        check=True
+                    )
+
+            # Verify
+            result = subprocess.run(
+                [python_exe, "-c", "import pip; print('pip', pip.__version__)"],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                print(f"[numpy] pip bootstrap ok: {result.stdout.strip()}")
+            else:
+                raise RuntimeError(
+                    f"pip bootstrap failed for {python_exe}\n"
+                    f"hp_site={hp_site}\n"
+                    f"stderr={result.stderr}"
+                )
+
+        # ---- 2. now run the normal prerequisite install --------------------
+        super().install_hostpython_prerequisites(
+            packages=packages, force_upgrade=force_upgrade
+        )
+
+
     # Pinned to 2.1.3: numpy 2.2+ adds unique.cpp which uses std::unordered_map
     # in a way that NDK r25b's libc++ (LLVM 14) cannot compile:
     #   error: no template named 'unordered_map' in namespace 'std'
