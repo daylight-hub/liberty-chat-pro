@@ -186,7 +186,15 @@ class HostPython3Recipe(Recipe):
         build_configured = False
         with current_directory(build_dir):
             if not Path('config.status').exists():
-                shprint(sh.Command(join(recipe_build_dir, 'configure')), _env=env)
+                shprint(
+                sh.Command(join(recipe_build_dir, 'configure')),
+                # Set prefix to the native-build directory so that
+                # site-packages land at native-build/lib/python3.11/site-packages
+                # which is writable. The default /usr/local is root-owned on
+                # the runner and we can never install pip there.
+                '--prefix=' + build_dir,
+                _env=env
+            )
                 build_configured = True
 
         with current_directory(recipe_build_dir):

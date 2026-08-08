@@ -42,6 +42,15 @@ class NumpyRecipe(MesonRecipe):
                 capture_output=True, text=True
             )
             hp_site = r.stdout.strip() if r.returncode == 0 else ""
+
+            # Verify the path is actually writable; if not (e.g. /usr/local
+            # because the binary was compiled with the default prefix), fall
+            # back to deriving from the binary location in the build tree.
+            if hp_site:
+                parent = os.path.dirname(hp_site)
+                if not os.access(parent, os.W_OK) and not os.path.exists(parent):
+                    hp_site = ""
+
             if not hp_site:
                 # Derive from binary path: .../native-build/bin/python3
                 hp_bin_dir = os.path.dirname(python_exe)
