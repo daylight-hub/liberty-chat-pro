@@ -35,29 +35,24 @@ class NumpyRecipe(MesonRecipe):
         )
         if result.returncode != 0:
             # Ask the hostpython where its site-packages are.
+            # The hostpython is now compiled with --prefix=native-build so
+            # site.getsitepackages() returns the writable build-tree path.
+            # We create the directory (it won't exist before make install)
+            # then install pip/setuptools into it via the system pip.
             r = subprocess.run(
                 [python_exe, "-c",
-                 "import site, sys; sp=site.getsitepackages(); "
-                 "print(sp[0] if sp else sys.prefix+'/lib/python3.11/site-packages')"],
+                 "import sys; print(sys.prefix)"],
                 capture_output=True, text=True
             )
-            hp_site = r.stdout.strip() if r.returncode == 0 else ""
+            if r.returncode == 0 and r.stdout.strip():
+                prefix = r.stdout.strip()
+            else:
+                # Fallback: prefix = directory containing the binary
+                # (binary is at native-build/python3, so prefix = native-build)
+                prefix = os.path.dirname(python_exe)
 
-            # Verify the path is actually writable; if not (e.g. /usr/local
-            # because the binary was compiled with the default prefix), fall
-            # back to deriving from the binary location in the build tree.
-            if hp_site:
-                parent = os.path.dirname(hp_site)
-                if not os.access(parent, os.W_OK) and not os.path.exists(parent):
-                    hp_site = ""
-
-            if not hp_site:
-                # Derive from binary path: .../native-build/bin/python3
-                hp_bin_dir = os.path.dirname(python_exe)
-                hp_site = os.path.join(
-                    os.path.dirname(hp_bin_dir), "lib", "python3.11", "site-packages"
-                )
-
+            # Python always uses lib/pythonX.Y/site-packages under prefix
+            hp_site = os.path.join(prefix, "lib", "python3.11", "site-packages")
             print(f"[numpy] bootstrapping pip -> {hp_site}")
             os.makedirs(hp_site, exist_ok=True)
 

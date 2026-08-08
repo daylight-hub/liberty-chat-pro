@@ -24,6 +24,30 @@ class PyCodec2Recipe(CythonRecipe):
         
         return env
 
+    def install_hostpython_prerequisites(self, packages=None, force_upgrade=True):
+        """Also install numpy into the hostpython for setup.py."""
+        import subprocess, os
+        python_exe = self.ctx.hostpython
+
+        # Ensure numpy is importable in the hostpython before setup.py runs.
+        r = subprocess.run([python_exe, "-c", "import numpy"], capture_output=True)
+        if r.returncode != 0:
+            # Get the hostpython prefix.
+            r2 = subprocess.run(
+                [python_exe, "-c", "import sys; print(sys.prefix)"],
+                capture_output=True, text=True
+            )
+            prefix = r2.stdout.strip() if r2.returncode == 0 else os.path.dirname(python_exe)
+            hp_site = os.path.join(prefix, "lib", "python3.11", "site-packages")
+            os.makedirs(hp_site, exist_ok=True)
+            print(f"[pycodec2] installing numpy into hostpython -> {hp_site}")
+            subprocess.run(
+                ["python3", "-m", "pip", "install", "--target", hp_site,
+                 "--no-deps", "numpy==2.1.3", "-q"],
+                check=True
+            )
+        super().install_hostpython_prerequisites(packages=packages, force_upgrade=force_upgrade)
+
     def build_arch(self, arch):
         super().build_arch(arch)
         with current_directory(self.get_build_dir(arch.arch)):
