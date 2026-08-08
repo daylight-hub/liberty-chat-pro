@@ -60,4 +60,23 @@ def before_apk_build(toolchain):
             shutil.copy2(src, dst)
             print(f"[lcs_hook]   patched: {xml_file}")
 
+    # Run Gradle clean to clear stale .class files from previous builds.
+    # Without this, Gradle's incremental build may reuse cached .class files
+    # compiled from old PythonService.java content (io.unsigned.sideband),
+    # even though the source has been patched. The clean takes ~5 seconds
+    # and guarantees a fresh compile of all Java sources.
+    try:
+        import subprocess
+        print("[lcs_hook] running: ./gradlew clean")
+        result = subprocess.run(
+            ["./gradlew", "clean"],
+            capture_output=True, text=True, timeout=120
+        )
+        if result.returncode == 0:
+            print("[lcs_hook] gradlew clean: OK")
+        else:
+            print(f"[lcs_hook] gradlew clean returned {result.returncode}: {result.stderr[-300:]}")
+    except Exception as e:
+        print(f"[lcs_hook] gradlew clean failed (non-fatal): {e}")
+
     print("[lcs_hook] before_apk_build: done")
