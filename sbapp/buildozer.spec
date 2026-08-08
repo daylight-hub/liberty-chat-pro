@@ -27,6 +27,7 @@ p4a.local_recipes = ../recipes/
 # halves in sync.
 p4a.fork = kivy
 p4a.branch = v2026.05.09
+p4a.hook = lcs_build_hooks.py
 
 icon.filename = %(source.dir)s/assets/icon.png
 presplash.filename = %(source.dir)s/assets/presplash_small.png
