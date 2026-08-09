@@ -160,8 +160,34 @@ jobs:
           path: sbapp/bin/*.apk
           retention-days: 30
 
-      - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Create or update draft release
         uses: softprops/action-gh-release@v2
         with:
-          files: sbapp/bin/*.apk
+          # Always create/update a draft release so every successful build
+          # produces downloadable APKs. Publish manually when ready.
+          draft: true
+          prerelease: ${{ github.event.inputs.build_type != 'release' }}
+          name: "Liberty Chat Pro ${{ github.ref_name }} (${{ github.event.inputs.build_type || 'debug' }})"
+          tag_name: ${{ github.ref_name != 'main' && github.ref_name || format('build-{0}', github.run_number) }}
+          body: |
+            ## Liberty Chat Pro — automated build
+
+            **Branch:** `${{ github.ref_name }}`
+            **Build:** ${{ github.run_number }} (`${{ github.sha }}`)
+            **Type:** ${{ github.event.inputs.build_type || 'debug' }}
+
+            ### Files
+            | File | Description |
+            |---|---|
+            | `*-debug.apk` | Debug build — install directly for testing |
+            | `LibertyChatPro-signed.apk` | Signed release build (if release build was selected) |
+
+            ### Install
+            1. Download the APK below
+            2. Enable **Install unknown apps** for your file manager or browser
+            3. Open the APK to install
+
+            > Liberty Chat Pro installs **alongside** stock Sideband — different package ID.
+          files: |
+            sbapp/bin/*.apk
+          fail_on_unmatched_files: false
