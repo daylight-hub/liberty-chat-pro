@@ -219,9 +219,11 @@ final_build() {
   # are definitely ours, even if p4a re-created the dist.
   local JAVA_DIR="$SBAPP/.buildozer/android/platform/build-${ARCH}/dists/${DIST_NAME}/src/main/java/org/kivy/android"
   if [ -d "$JAVA_DIR" ]; then
-    echo "==> re-applying Java patches before Gradle"
-    cp "$SBAPP/patches/PythonService.java"  "$JAVA_DIR/PythonService.java"  && echo "    PythonService.java applied"
-    [ -f "$SBAPP/patches/PythonActivity.java" ] && cp "$SBAPP/patches/PythonActivity.java" "$JAVA_DIR/PythonActivity.java" && echo "    PythonActivity.java applied"
+    echo "==> re-applying Java patches before Gradle (belt-and-suspenders)"
+    cp "$SBAPP/patches/PythonService.java"  "$JAVA_DIR/PythonService.java"        && echo "    PythonService.java applied" || echo "    PythonService.java copy failed (non-fatal)"
+    if [ -f "$SBAPP/patches/PythonActivity.java" ]; then
+      cp "$SBAPP/patches/PythonActivity.java" "$JAVA_DIR/PythonActivity.java"         && echo "    PythonActivity.java applied" || echo "    PythonActivity.java copy failed (non-fatal)"
+    fi
   fi
 
   if ! run_buildozer final; then
