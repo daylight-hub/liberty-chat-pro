@@ -171,7 +171,14 @@ def make_tar(tfn, source_dirs, byte_compile_python=False, optimize_python=True):
                 continue
             if fn.endswith('.py') and byte_compile_python:
                 fn = compile_py_file(fn, optimize_python=optimize_python)
-            files.append((fn, relpath(realpath(fn), sd)))
+            # compile_py_file returns None if compilation fails (broken/missing
+            # source). Skip silently rather than crashing make_tar.
+            if fn is None:
+                continue
+            real = realpath(fn)
+            if real is None:
+                continue
+            files.append((fn, relpath(real, sd)))
     files.sort()  # deterministic
 
     # create tar.gz of thoses files
