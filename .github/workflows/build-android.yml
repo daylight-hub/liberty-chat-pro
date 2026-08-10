@@ -7,6 +7,10 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      version:
+        description: 'Release version (e.g. 1.0.0 or 1.0.0-beta1) — required to create a draft release'
+        required: false
+        default: ''
       build_type:
         description: 'Build type'
         required: true
@@ -162,28 +166,30 @@ jobs:
           path: sbapp/bin/*.apk
           retention-days: 30
 
-      - name: Create or update draft release
-        # Only create a release when APKs were actually produced.
-        if: success() && hashFiles('sbapp/bin/*.apk') != ''
+      - name: Create draft release
+        # Only runs when a version number was supplied AND the build succeeded.
+        if: |
+          success() &&
+          github.event.inputs.version != '' &&
+          hashFiles('sbapp/bin/*.apk') != ''
         uses: softprops/action-gh-release@v2
         with:
           draft: true
           prerelease: ${{ github.event.inputs.build_type != 'release' }}
-          name: "Liberty Chat Pro — build ${{ github.run_number }}"
-          tag_name: "build-${{ github.run_number }}"
+          name: "Liberty Chat Pro v${{ github.event.inputs.version }}"
+          tag_name: "v${{ github.event.inputs.version }}"
           body: |
-            ## Liberty Chat Pro — automated build ${{ github.run_number }}
+            ## Liberty Chat Pro v${{ github.event.inputs.version }}
 
-            **Branch:** `${{ github.ref_name }}`
-            **Commit:** `${{ github.sha }}`
-            **Type:** ${{ github.event.inputs.build_type || 'debug' }}
+            **Built from:** `${{ github.ref_name }}` @ `${{ github.sha }}`
+            **Build type:** ${{ github.event.inputs.build_type || 'debug' }}
 
             ### Install
             1. Download the APK below
-            2. Enable **Install unknown apps** for your file manager or browser
-            3. Open the APK to install
+            2. On your Android device, enable **Install unknown apps**
+            3. Open the APK
 
-            > This is a **draft** release — publish it manually when ready.
-            > Liberty Chat Pro installs alongside Sideband (different package ID).
+            > **Draft** — review and click Publish when ready to release publicly.
+            > Liberty Chat Pro installs alongside Sideband (separate package ID `network.lcs.libertychatpro`).
           files: sbapp/bin/*.apk
           fail_on_unmatched_files: false

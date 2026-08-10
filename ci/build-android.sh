@@ -16,6 +16,9 @@
 #
 set -euo pipefail
 
+# Print file + line whenever set -e triggers so failures are never silent
+trap 'echo "==> SCRIPT ERROR at line $LINENO (exit $?)" >&2' ERR
+
 BUILD_TYPE="${1:-debug}"
 ARCH="arm64-v8a"
 
@@ -168,7 +171,7 @@ patch_dist() {
     "${BUILD_DIR}/bootstrap_builds/sdl2/jni/SDL/android-project/app/src/main/java/org/libsdl/app/HIDDeviceUSB.java" \
     "${DIST_DIR}/src/main/java/org/libsdl/app/HIDDeviceUSB.java" \
     "${DIST_DIR}/jni/SDL/android-project/app/src/main/java/org/libsdl/app/HIDDeviceUSB.java"; do
-    [ -d "$(dirname "$t")" ] && cp patches/HIDDeviceUSB.java "$t" && echo "    HIDDeviceUSB -> $t"
+    [ -d "$(dirname "$t")" ] && { cp patches/HIDDeviceUSB.java "$t" && echo "    HIDDeviceUSB -> $t"; } || true
   done
 
   # Service loader
@@ -176,16 +179,20 @@ patch_dist() {
     "${P4A_DIR}/pythonforandroid/bootstraps/common/build/src/main/java/org/kivy/android/PythonService.java" \
     "${BUILD_DIR}/bootstrap_builds/sdl2/src/main/java/org/kivy/android/PythonService.java" \
     "${DIST_DIR}/src/main/java/org/kivy/android/PythonService.java"; do
-    [ -d "$(dirname "$t")" ] && cp patches/PythonService.java "$t" && echo "    PythonService -> $t"
+    [ -d "$(dirname "$t")" ] && { cp patches/PythonService.java "$t" && echo "    PythonService -> $t"; } || true
   done
 
-  # Python activity
-  for t in \
-    "${P4A_DIR}/pythonforandroid/bootstraps/sdl2/build/src/main/java/org/kivy/android/PythonActivity.java" \
-    "${BUILD_DIR}/bootstrap_builds/sdl2/src/main/java/org/kivy/android/PythonActivity.java" \
-    "${DIST_DIR}/src/main/java/org/kivy/android/PythonActivity.java"; do
-    [ -d "$(dirname "$t")" ] && cp patches/PythonActivity.java "$t" && echo "    PythonActivity -> $t"
-  done
+  # Python activity (skip if our patched version is absent — stock p4a file is fine)
+  if [ -f patches/PythonActivity.java ]; then
+    for t in \
+      "${P4A_DIR}/pythonforandroid/bootstraps/sdl2/build/src/main/java/org/kivy/android/PythonActivity.java" \
+      "${BUILD_DIR}/bootstrap_builds/sdl2/src/main/java/org/kivy/android/PythonActivity.java" \
+      "${DIST_DIR}/src/main/java/org/kivy/android/PythonActivity.java"; do
+      [ -d "$(dirname "$t")" ] && { cp patches/PythonActivity.java "$t" && echo "    PythonActivity -> $t"; } || true
+    done
+  else
+    echo "    PythonActivity.java not in patches/ — using stock p4a version"
+  fi
 
   # XML + build.py injection
   mkdir -p "${DIST_DIR}/src/main/res/xml" "${DIST_DIR}/templates"
@@ -206,7 +213,7 @@ patch_dist() {
   # LXST native filter lib must be copied back out for packaging
   local FILTERLIB="${DIST_DIR}/_python_bundle__${ARCH}/_python_bundle/site-packages/LXST/filterlib.so"
   if [ -f "$FILTERLIB" ]; then
-    cp "$FILTERLIB" LXST/ && echo "    filterlib.so injected"
+    { cp "$FILTERLIB" LXST/ && echo "    filterlib.so injected"; } || echo "    filterlib.so copy failed (non-fatal)"
   fi
 }
 
