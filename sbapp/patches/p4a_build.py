@@ -169,14 +169,19 @@ def make_tar(tfn, source_dirs, byte_compile_python=False, optimize_python=True):
         for fn in listfiles(sd):
             if is_blacklist(fn):
                 continue
+            original_fn = fn
             if fn.endswith('.py') and byte_compile_python:
-                fn = compile_py_file(fn, optimize_python=optimize_python)
-            # compile_py_file returns None if compilation fails (broken/missing
-            # source). Skip silently rather than crashing make_tar.
-            if fn is None:
-                continue
+                compiled = compile_py_file(fn, optimize_python=optimize_python)
+                if compiled is not None:
+                    fn = compiled
+                # If compile_py_file returns None (PYTHON binary not found),
+                # fall back to the original .py file rather than skipping it
+                # entirely. Skipping causes an empty app tar which means
+                # main.py is never deployed and the app crashes on launch
+                # with "Entrypoint not found".
             real = realpath(fn)
             if real is None:
+                # Should never happen for a valid file, but guard against it.
                 continue
             files.append((fn, relpath(real, sd)))
     files.sort()  # deterministic
