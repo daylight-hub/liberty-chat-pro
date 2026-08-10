@@ -145,20 +145,36 @@ class Hardware():
         except Exception: pass
 
         preset = get_preset(key)
-        if preset is None: return
+        if preset is None:
+            RNS.log("Preset not found: "+str(key), RNS.LOG_ERROR)
+            return
 
+        RNS.log("Applying LoRa preset: "+preset["name"], RNS.LOG_NOTICE)
         self.app.sideband.config["hw_rnode_preset"] = key
         if key != "custom":
-            self.app.sideband.config["hw_rnode_bandwidth"] = preset["bandwidth"]
-            self.app.sideband.config["hw_rnode_spreading_factor"] = preset["sf"]
-            self.app.sideband.config["hw_rnode_coding_rate"] = preset["cr"]
-            ids = self.hardware_rnode_screen.ids
-            ids.hardware_rnode_bandwidth.text = str(preset["bandwidth"]/1000)
-            ids.hardware_rnode_spreadingfactor.text = str(preset["sf"])
-            ids.hardware_rnode_codingrate.text = str(preset["cr"])
+            bw = int(preset["bandwidth"])
+            sf = int(preset["sf"])
+            cr = int(preset["cr"])
+            self.app.sideband.config["hw_rnode_bandwidth"] = bw
+            self.app.sideband.config["hw_rnode_spreading_factor"] = sf
+            self.app.sideband.config["hw_rnode_coding_rate"] = cr
 
-        self.update_rnode_preset_display()
+            try:
+                ids = self.hardware_rnode_screen.ids
+                ids.hardware_rnode_bandwidth.text = str(bw / 1000.0)
+                ids.hardware_rnode_spreadingfactor.text = str(sf)
+                ids.hardware_rnode_codingrate.text = str(cr)
+                RNS.log("  BW="+str(bw)+" SF="+str(sf)+" CR="+str(cr), RNS.LOG_DEBUG)
+            except Exception as e:
+                RNS.log("Could not update preset text fields: "+str(e), RNS.LOG_ERROR)
+
+        try:
+            self.update_rnode_preset_display()
+        except Exception as e:
+            RNS.log("Could not update preset display: "+str(e), RNS.LOG_ERROR)
+
         self.app.sideband.save_configuration()
+        RNS.log("Preset "+preset["name"]+" applied and saved", RNS.LOG_NOTICE)
 
     def update_rnode_preset_display(self):
         from lcs.lora_presets import match_preset, get_preset, preset_summary

@@ -268,7 +268,8 @@ class SidebandCore():
         self.telemetry_exclude_path = os.path.join(self.app_dir, "app_storage", "collector_response_excluded")
 
         if RNS.vendor.platformutils.is_android():
-            self.webshare_dir  = "./share/"
+            # Use absolute path — relative ./share/ breaks if CWD changes
+            self.webshare_dir  = os.path.join(self.asset_dir, "..", "share")
         else:
             sideband_dir = os.path.dirname(os.path.abspath(__file__))
             self.webshare_dir  = os.path.abspath(os.path.join(sideband_dir, "..", "share"))
@@ -757,8 +758,8 @@ class SidebandCore():
         if not "telemetry_s_information" in self.config:               self.config["telemetry_s_information"] = False
         if not "telemetry_s_information_text" in self.config:          self.config["telemetry_s_information_text"] = ""
 
-        if not "service_plugins_enabled" in self.config:               self.config["service_plugins_enabled"] = False
-        if not "command_plugins_enabled" in self.config:               self.config["command_plugins_enabled"] = False
+        if not "service_plugins_enabled" in self.config:               self.config["service_plugins_enabled"] = True
+        if not "command_plugins_enabled" in self.config:               self.config["command_plugins_enabled"] = True
         if not "command_plugins_path" in self.config:                  self.config["command_plugins_path"] = None
 
         if not "map_history_limit" in self.config:                     self.config["map_history_limit"] = 7*24*60*60
