@@ -257,6 +257,17 @@ clean_stale_recipes() {
       fi
     done
   done
+
+  # Also remove cryptography from the python-installs tree — that is where
+  # the compiled .so files end up and what gets packaged into the APK.
+  # Deleting other_builds alone leaves the stale installed version intact.
+  local py_installs="$SBAPP/.buildozer/android/platform/build-arm64-v8a/build/python-installs"
+  for inst_dir in "$py_installs"/*/arm64-v8a/cryptography; do
+    if [ -e "$inst_dir" ]; then
+      echo "    removing installed: $inst_dir"
+      rm -rf "$inst_dir"
+    fi
+  done
   # Verify: prove the directories are actually gone before continuing.
   if [ -d "$other_builds/hostpython3" ]; then
     echo "FATAL: $other_builds/hostpython3 still exists after cleanup"
