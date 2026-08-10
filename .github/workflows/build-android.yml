@@ -144,10 +144,15 @@ jobs:
         run: |
           set -e
 
-          # Decode keystore — use printf to avoid echo adding a trailing newline
-          # or mishandling passwords that look like flags.
-          printf '%s' "$KEYSTORE_B64" | base64 -d > /tmp/release.keystore
-          echo "Keystore written: $(wc -c < /tmp/release.keystore) bytes"
+          # Decode keystore via Python (handles any whitespace/line-wrapping
+          # that would corrupt a shell pipe through base64).
+          python3 -c "import base64,os; d=base64.b64decode(os.environ['KEYSTORE_B64'].strip()); open('/tmp/release.keystore','wb').write(d); print(f'Keystore: {len(d)} bytes')"
+
+          # Verify the decoded keystore is readable before signing.
+          keytool -list -keystore /tmp/release.keystore -storepass "$SIGNING_STORE_PASSWORD" -noprompt 2>&1 | head -5 || {
+            echo "FATAL: keystore verify failed — re-check KEYSTORE_B64 and KEYSTORE_PASSWORD"
+            exit 1
+          }
 
           # Find apksigner in buildozer's own SDK first, then system SDK.
           SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
