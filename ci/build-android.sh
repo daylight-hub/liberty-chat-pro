@@ -14,10 +14,10 @@
 #   3. patch   - overwrite SDL/service/activity Java + inject XML (upstream: `pacthfiles`)
 #   4. build   - real build against the patched dist
 #
-set -euo pipefail
-
-# Print file + line whenever set -e triggers so failures are never silent
-trap 'echo "==> SCRIPT ERROR at line $LINENO (exit $?)" >&2' ERR
+# Explicit error handling: don't use set -e (it silently kills the script
+# on compound commands and produces no traceable output in CI). Instead we
+# use set -u for undefined vars and pipefail, and check exit codes explicitly.
+set -uo pipefail
 
 BUILD_TYPE="${1:-debug}"
 ARCH="arm64-v8a"
@@ -266,10 +266,17 @@ clean_stale_recipes() {
   echo "==> stale recipe cleanup verified"
 }
 
-clean_stale_recipes
-host_tools
-vendor
-prebake
+echo "==> [1/6] clean_stale_recipes"
+clean_stale_recipes || { echo "FATAL: clean_stale_recipes failed (exit $?)"; exit 1; }
+
+echo "==> [2/6] host_tools"
+host_tools          || { echo "FATAL: host_tools failed (exit $?)"; exit 1; }
+
+echo "==> [3/6] vendor"
+vendor              || { echo "FATAL: vendor failed (exit $?)"; exit 1; }
+
+echo "==> [4/6] prebake"
+prebake             || { echo "FATAL: prebake failed (exit $?)"; exit 1; }
 # -------------------------------------------------------- 3b. pip bootstrap
 # The hostpython binary is built with --prefix=<build_dir>/native-build
 # (Mark's recipe sets sys_prefix = build_dir/android-root, but the actual
@@ -336,10 +343,17 @@ print(sp[0] if sp else (sys.prefix + '/lib/python3.11/site-packages'))
   fi
 }
 
-patch_dist
-bootstrap_pip
-patch_p4a_templates
-final_build
+echo "==> [5/6] patch_dist"
+patch_dist          || { echo "FATAL: patch_dist failed (exit $?)"; exit 1; }
+
+echo "==> [5b] bootstrap_pip"
+bootstrap_pip       || { echo "FATAL: bootstrap_pip failed (exit $?)"; exit 1; }
+
+echo "==> [5c] patch_p4a_templates"
+patch_p4a_templates || { echo "FATAL: patch_p4a_templates failed (exit $?)"; exit 1; }
+
+echo "==> [6/6] final_build"
+final_build         || { echo "FATAL: final_build failed (exit $?)"; exit 1; }
 
 echo "==> artifacts:"
 ls -lh bin/*.apk 2>/dev/null || { echo "no APK produced"; exit 1; }
