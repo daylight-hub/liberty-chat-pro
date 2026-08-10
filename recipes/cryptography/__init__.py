@@ -1,26 +1,25 @@
-from pythonforandroid.recipe import RustCompiledComponentsRecipe
-from os.path import join
+from pythonforandroid.recipe import CompiledComponentsPythonRecipe, Recipe
 
 
-class CryptographyRecipe(RustCompiledComponentsRecipe):
-
+class CryptographyRecipe(CompiledComponentsPythonRecipe):
+    """
+    Cryptography 2.8 — matches the version used in Sideband 2.0.1's build
+    environment (p4a 2024.1.21). This is a pure C extension with no Rust/PyO3
+    dependency. Newer versions (41+) use Rust/PyO3 and fail on Android with
+    p4a's Python embedding due to unresolvable stable-ABI symbols at dlopen.
+    """
     name = 'cryptography'
-    # 43.0.3 is the last release whose Rust/PyO3 layer is compatible with
-    # Python 3.11 on Android. Version 44+ dropped _Py_NoneStruct usage but
-    # 46.x re-introduced Python-3.12-specific ABI symbols that our 3.11
-    # build does not export, causing dlopen failures at runtime.
-    version = '43.0.3'
-    url = 'https://github.com/pyca/cryptography/archive/refs/tags/{version}.tar.gz'
-    depends = ['openssl', 'cffi']
+    version = '2.8'
+    url = 'https://github.com/pyca/cryptography/archive/{version}.tar.gz'
+    depends = ['openssl', 'setuptools', 'cffi']
+    call_hostpython_via_targetpython = False
 
-    def get_recipe_env(self, arch, **kwargs):
-        env = super().get_recipe_env(arch, **kwargs)
-        openssl_build_dir = self.get_recipe('openssl', self.ctx).get_build_dir(arch.arch)
-        build_target = self.RUST_ARCH_CODES[arch.arch].upper().replace("-", "_")
-        openssl_include = "{}_OPENSSL_INCLUDE_DIR".format(build_target)
-        openssl_libs = "{}_OPENSSL_LIB_DIR".format(build_target)
-        env[openssl_include] = join(openssl_build_dir, 'include')
-        env[openssl_libs] = join(openssl_build_dir)
+    def get_recipe_env(self, arch):
+        env = super().get_recipe_env(arch)
+        openssl_recipe = Recipe.get_recipe('openssl', self.ctx)
+        env['CFLAGS'] += openssl_recipe.include_flags(arch)
+        env['LDFLAGS'] += openssl_recipe.link_dirs_flags(arch)
+        env['LIBS'] = openssl_recipe.link_libs_flags()
         return env
 
 
