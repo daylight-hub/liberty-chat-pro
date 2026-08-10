@@ -135,29 +135,35 @@ jobs:
       # Signing only runs when the secrets exist, so forks and PRs still build.
       - name: Sign release APK
         if: ${{ github.event.inputs.build_type == 'release' && env.KEYSTORE_B64 != '' }}
+        env:
+          # Expose to apksigner via env: prefix — avoids bash special-character
+          # expansion that breaks passwords with !, $, \, spaces, etc.
+          SIGNING_STORE_PASSWORD: ${{ env.KEYSTORE_PASSWORD }}
+          SIGNING_KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ env.KEY_ALIAS }}
         run: |
           set -e
-          echo "$KEYSTORE_B64" | base64 -d > /tmp/release.keystore
 
-          # buildozer installs its own SDK; ANDROID_HOME may be unset or point elsewhere.
+          # Decode keystore — use printf to avoid echo adding a trailing newline
+          # or mishandling passwords that look like flags.
+          printf '%s' "$KEYSTORE_B64" | base64 -d > /tmp/release.keystore
+          echo "Keystore written: $(wc -c < /tmp/release.keystore) bytes"
+
+          # Find apksigner in buildozer's own SDK first, then system SDK.
           SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
-          [ -d "$SDK_ROOT/build-tools" ] || SDK_ROOT="$ANDROID_HOME"
+          [ -d "$SDK_ROOT/build-tools" ] || SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           BUILD_TOOLS=$(ls -d "$SDK_ROOT"/build-tools/* 2>/dev/null | sort -V | tail -1)
           if [ -z "$BUILD_TOOLS" ]; then
-            echo "Could not locate Android build-tools; searched $SDK_ROOT"
+            echo "FATAL: could not locate Android build-tools in $SDK_ROOT"
             exit 1
           fi
           echo "Using build-tools: $BUILD_TOOLS"
 
-          "$BUILD_TOOLS/apksigner" sign \
-            --ks /tmp/release.keystore \
-            --ks-pass "pass:$KEYSTORE_PASSWORD" \
-            --ks-key-alias "$KEY_ALIAS" \
-            --key-pass "pass:$KEY_PASSWORD" \
-            --out "sbapp/bin/LibertyChatPro-signed.apk" \
-            "${{ steps.apk.outputs.path }}"
+          # Sign — passwords read from env: variables so no shell interpolation.
+          "$BUILD_TOOLS/apksigner" sign             --ks /tmp/release.keystore             --ks-pass env:SIGNING_STORE_PASSWORD             --ks-key-alias "$SIGNING_KEY_ALIAS"             --key-pass env:SIGNING_KEY_PASSWORD             --out "sbapp/bin/LibertyChatPro-signed.apk"             "${{ steps.apk.outputs.path }}"
 
           "$BUILD_TOOLS/apksigner" verify --print-certs "sbapp/bin/LibertyChatPro-signed.apk"
+          echo "Signing verified OK"
           rm -f /tmp/release.keystore
 
       - uses: actions/upload-artifact@v4
