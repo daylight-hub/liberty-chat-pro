@@ -258,9 +258,11 @@ clean_stale_recipes() {
     done
   done
 
-  # Also remove cryptography from the python-installs tree — that is where
-  # the compiled .so files end up and what gets packaged into the APK.
-  # Deleting other_builds alone leaves the stale installed version intact.
+  # Also remove cryptography from EVERY cached location — recipe build,
+  # installed site-packages, AND the packaged _python_bundle inside the dist.
+  # The dist's bundle is a tar that bakes in compiled .so files; if it
+  # survives, the old Rust abi3.so ends up on the device regardless of
+  # whether the recipe was rebuilt.
   local py_installs="$SBAPP/.buildozer/android/platform/build-arm64-v8a/build/python-installs"
   for inst_dir in "$py_installs"/*/arm64-v8a/cryptography; do
     if [ -e "$inst_dir" ]; then
@@ -268,6 +270,19 @@ clean_stale_recipes() {
       rm -rf "$inst_dir"
     fi
   done
+
+  # Nuke the dist's _python_bundle so it gets rebuilt from current recipe output.
+  local dist_bundle="$SBAPP/.buildozer/android/platform/build-arm64-v8a/dists/${DIST_NAME}/_python_bundle__arm64-v8a"
+  if [ -e "$dist_bundle" ]; then
+    echo "    removing dist bundle: $dist_bundle"
+    rm -rf "$dist_bundle"
+  fi
+  # Also the unpacked site-packages inside the dist
+  local dist_sp="$SBAPP/.buildozer/android/platform/build-arm64-v8a/dists/${DIST_NAME}/_python_bundle"
+  if [ -e "$dist_sp" ]; then
+    echo "    removing dist python_bundle: $dist_sp"
+    rm -rf "$dist_sp"
+  fi
   # Verify: prove the directories are actually gone before continuing.
   if [ -d "$other_builds/hostpython3" ]; then
     echo "FATAL: $other_builds/hostpython3 still exists after cleanup"
