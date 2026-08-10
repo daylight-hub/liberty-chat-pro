@@ -271,18 +271,18 @@ clean_stale_recipes() {
     fi
   done
 
-  # Nuke the dist's _python_bundle so it gets rebuilt from current recipe output.
-  local dist_bundle="$SBAPP/.buildozer/android/platform/build-arm64-v8a/dists/${DIST_NAME}/_python_bundle__arm64-v8a"
-  if [ -e "$dist_bundle" ]; then
-    echo "    removing dist bundle: $dist_bundle"
-    rm -rf "$dist_bundle"
-  fi
-  # Also the unpacked site-packages inside the dist
-  local dist_sp="$SBAPP/.buildozer/android/platform/build-arm64-v8a/dists/${DIST_NAME}/_python_bundle"
-  if [ -e "$dist_sp" ]; then
-    echo "    removing dist python_bundle: $dist_sp"
-    rm -rf "$dist_sp"
-  fi
+  # Remove ONLY the cryptography directory inside the dist's _python_bundle,
+  # not the whole bundle (build.py needs the directory to exist for make_tar).
+  for bundle_dir in     "$SBAPP/.buildozer/android/platform/build-arm64-v8a/dists/${DIST_NAME}/_python_bundle__arm64-v8a/_python_bundle/site-packages/cryptography"     "$SBAPP/.buildozer/android/platform/build-arm64-v8a/dists/${DIST_NAME}/_python_bundle/site-packages/cryptography"; do
+    if [ -e "$bundle_dir" ]; then
+      echo "    removing bundled cryptography: $bundle_dir"
+      rm -rf "$bundle_dir"
+    fi
+  done
+  # Also kill any stray _rust.abi3.so anywhere in the dist
+  find "$SBAPP/.buildozer/android/platform/build-arm64-v8a/dists/${DIST_NAME}"     -name "_rust.abi3.so" -delete -print 2>/dev/null | while read f; do
+    echo "    deleted stale: $f"
+  done
   # Verify: prove the directories are actually gone before continuing.
   if [ -d "$other_builds/hostpython3" ]; then
     echo "FATAL: $other_builds/hostpython3 still exists after cleanup"
