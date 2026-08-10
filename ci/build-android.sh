@@ -247,7 +247,7 @@ final_build() {
 clean_stale_recipes() {
   echo "==> checking for stale recipe builds to clean"
   local other_builds=".buildozer/android/platform/build-arm64-v8a/build/other_builds"
-  for name in hostpython3 "python3*" numpy; do
+  for name in hostpython3 "python3*" numpy cryptography; do
     for d in $other_builds/$name; do
       if [ -e "$d" ]; then
         echo "    removing: $d"
