@@ -5157,12 +5157,19 @@ class SidebandCore():
                     daemon_threads = True
 
                 with ThreadedHTTPServer(("", port), RequestHandler) as webserver:
-                    from sideband.certgen import ensure_certificate
-                    
-                    ensure_certificate(self.webshare_ssl_key_path, self.webshare_ssl_cert_path)
-                    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-                    ssl_context.load_cert_chain(certfile=self.webshare_ssl_cert_path, keyfile=self.webshare_ssl_key_path)
-                    webserver.socket = ssl_context.wrap_socket(webserver.socket, do_handshake_on_connect=False, server_side=True)
+                    try:
+                        from sideband.certgen import ensure_certificate
+                        ensure_certificate(self.webshare_ssl_key_path, self.webshare_ssl_cert_path)
+                        if os.path.isfile(self.webshare_ssl_cert_path) and os.path.isfile(self.webshare_ssl_key_path):
+                            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                            ssl_context.load_cert_chain(certfile=self.webshare_ssl_cert_path, keyfile=self.webshare_ssl_key_path)
+                            webserver.socket = ssl_context.wrap_socket(webserver.socket, do_handshake_on_connect=False, server_side=True)
+                            RNS.log("Repository server started with SSL on port "+str(port), RNS.LOG_NOTICE)
+                        else:
+                            RNS.log("SSL certificate not available, serving over plain HTTP on port "+str(port), RNS.LOG_WARNING)
+                    except Exception as e:
+                        RNS.log("Could not set up SSL for repository server: "+str(e), RNS.LOG_WARNING)
+                        RNS.log("Serving repository over plain HTTP on port "+str(port), RNS.LOG_WARNING)
 
                     self.webshare_server = webserver
                     webserver.serve_forever()
